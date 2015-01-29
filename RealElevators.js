@@ -31,12 +31,12 @@
 
                 floor.on("up_button_pressed", function(){
                     goingUp[floor.floorNum()] = true;
-                    console.log('floor ' + floor.floorNum() + ' up button pressed');
+                    console.log('Floor ' + floor.floorNum() + ' up button pressed');
                 });
 
                 floor.on("down_button_pressed", function(){
                     goingDown[floor.floorNum()] = true;
-                    console.log('floor ' + floor.floorNum() + ' down button pressed');
+                    console.log('Floor ' + floor.floorNum() + ' down button pressed');
                 });
 
             });
@@ -47,37 +47,45 @@
                 elevator = elevators[e];
 //              elevatorGoingUp(elevator);
 
-                console.log('initialised elevator' + e);
+                console.log('Initialised elevator' + e);
 
                 elevator.on("passing_floor", function(floorNum, direction) { 
-                    console.log('elevator' + e + ' at floor ' + floorNum + ', direction: ' + direction);
+                    console.log('Elevator' + e + ' at floor ' + floorNum + ', direction: ' + direction);
 
-                    if elevator.getPressedFloors().indexOf()
+                    // if someone in the elevator wants to go here, stop
+                    if (isInArray(elevator.getPressedFloors(),floorNum)){ 
+                        elevator.goToFloor(floorNum, true); 
+                    }
 
-                    // TODO
-                    // stop if someone's pressed the button for this floor
                     // or, if someone's waiting here, going in the same direction.. pick them up? .. but only if you have space
-
+                    else if (direction == 'up' && goingUp[floorNum] && elevator.loadFactor() < 0.9){
+                        elevator.goToFloor(floorNum, true);
+                    }
+                    else if (direction == 'down' && goingDown[floorNum] && elevator.loadFactor() < 0.9){
+                        elevator.goToFloor(floorNum, true);
+                    }
                 }); 
 
                 // when it stops at a floor, clear destination queue and recalculate where to go
                 elevator.on("stopped_at_floor", function(floorNum){
-                    console.log('elevator' + e +' stopped at floor ' + floorNum);
+                    console.log('Elevator' + e +' stopped at floor ' + floorNum);
                     clearElevatorDestinationQueue(elevator);
+                    var direction = getElevatorNextDirection(elevator);
+
                     nextFloor = getElevatorDestination(elevator);
                     elevator.goToFloor(nextFloor);
 
-                    console.log('elevator' + e +' sent to floor ' + nextFloor);
+                    console.log('Elevator' + e +' sent to floor ' + nextFloor);
 
                 });
 
                 elevator.on("idle", function() {     
-                    console.log('elevator' + e + ' is idle! Sending to floor ' + e%floors.length;
+                    console.log('Elevator' + e + ' is idle! Sending to floor ' + e%floors.length);
                     elevator.goToFloor(e%floors.length);
                 });
 
                 elevator.on("floor_button_pressed", function(floorNum){ // someone pressed a floor, but doesn't matter because we will pick up the pressed floors elsewhere
-                    console.log('elevator' + e + ' floor request: ' + floorNum);
+                    console.log('Elevator' + e + ' floor request: ' + floorNum);
                 });
             });
 
@@ -88,67 +96,71 @@
                 elevator.checkDestinationQueue();
             }
 
-            function getElevatorDestination(elevator){
-
-                var direction = getNewDirection(elevator);
-                var destination = elevator.getCurrentFloor(); // will stay on current floor if nothing returned
-
-                if (direction == 'up'){
+            function getElevatorNextDestination(elevator, direction){
+                if (getElevatorDirection(elevator) == 'up'){
                     elevatorGoingUp(elevator);
-                    destination = getNextFloorUp();
+                    return getNextFloorUp();
                 }
-                else if (direction == 'down'){
+                else if (getElevatorDirection(elevator) == 'down'){
                     elevatorGoingDown(elevator);
-                    destination = getNextFloorDown();
+                    return getNextFloorDown();
                 }
-
-                return destination;
+                else {
+                    return elevator.getCurrentFloor(); // something weird is going on here. Maybe return an exception?
+                }
             }
 
-            // given an elevator and a direction, decides whether it should go up or down
-            function getNewDirection(elevator){
+            // given an elevator, decides whether it should go up or down
+            function getElevatorNextDirection(elevator){
 
                 // if going up, try to keep going up
-                if (elevator.goingUpDirection()) {
-                    var upperBound = 0;
-                    upperBound = getHighestFloorToVisit(elevator.getButtonsPressed());
-
-                    if (upperBound > elevator.currentFloor()){
+                if (getElevatorDirection(elevator) == 'up') {
+                    if (getHighestFloorToVisit(elevator.getButtonsPressed()) > elevator.currentFloor()){
                         return 'up';
                     }
                     else return 'down';
                 }  // if going down, try to keep going down
-                else if (elevator.goingDownDirection()) {
-                    var lowerBound = floors.length-1;
-                    lowerBound = getLowestFloorToVisit(elevator.getButtonsPressed());
-                    if (lowerBound < elevator.currentFloor()){
+                else if (getElevatorDirection(elevator) == 'down') {
+                    if (getLowestFloorToVisit(elevator.getButtonsPressed()) < elevator.currentFloor()){
                         return 'down';
                     }
                     else return 'up';
                 }                
-
             }
 
-            function elevatorGoingDown(elevator){
-                elevator.goingDownDirection() = true;
-                elevator.goingUpDirection() = false;
+            // returns an elevator's current direction
+            function getElevatorDirection(elevator){
+                if (elevator.goingDownDirection() && !elevator.goingUpDirection()) return 'down';
+                else if (elevator.goingUpDirection() && !elevator.goingDownDirection()) return 'up';
+                else {
+                    console.log('Elevator has no clear direction?! Something went terribly wrong');
+                    return 'none'
+                }
             }
 
-            function elevatorGoingUp(elevator){
-                elevator.goingUpDirection() = true;
-                elevator.goingDownDirection() = false;
+            // sets an elevator's current direction
+            function setElevatorDirection(elevator, direction){
+                if (direction == 'up'){
+                    elevator.goingUpDirection() = true;
+                    elevator.goingDownDirection() = false;
+                }
+                else if (direction == 'down'){
+                    elevator.goingDownDirection() = true;
+                    elevator.goingUpDirection() = false;
+                }
             }
 
-            function getNextFloorUp(currentFloor){ // wants to get the floor closest to the elevator
-                var currentFloor = elevator.currentFloor();
-                return min(nextFloorUpGoingUp(currentFloor);, nextFloorUpGoingDown(currentFloor);, nextElevatorPressedUp(elevator));
+            // gets the next floor up that the elevator can travel to
+            function getNextFloorUp(pressedFloors, currentFloor){
+                return min(nextFloorUpGoingUp(currentFloor);, nextFloorUpGoingDown(currentFloor);, nextElevatorPressedUp(pressedFloors, currentFloor));
             }
 
+            // gets the next floor above the current floor which has requested to go down. Returns current floor if none found.
             function nextFloorUpGoingDown(currentFloor){
                 for (var f = currentFloor; f < elevators.length; f++) {
                     if(goingDown[f]) return f;
                 }
-                return currentFloor; // if none, returns current floor
+                return currentFloor;
             }
 
             function nextFloorUpGoingUp(currentFloor){
@@ -165,8 +177,8 @@
                 return currentFloor; // if none, returns current floor
             }
 
-            function getNextFloorDown(buttonsPressed){  // wants to get the floor closest to the elevator
-                return max(nextFloorDownGoingDown();, nextFloorDownGoingUp();, nextElevatorPressedDown(buttonsPressed));
+            function getNextFloorDown(pressedFloors, currentFloor){  // wants to get the floor closest to the elevator
+                return max(nextFloorDownGoingDown(currentFloor);, nextFloorDownGoingUp(currentFloor);, nextElevatorPressedDown(pressedFloors, currentFloor));
             }
 
             function nextFloorDownGoingDown(currentFloor){
@@ -192,8 +204,8 @@
             }            
 
             // UP functions
-            function getHighestFloorToVisit(elevatorButtonsPressed) {
-                return max(highestFloorGoingUp();, highestFloorGoingDown();, maxInArray(elevatorButtonsPressed));
+            function getHighestFloorToVisit(pressedFloors) {
+                return max(highestFloorGoingUp();, highestFloorGoingDown();, maxInArray(pressedFloors));
             }
 
             function highestFloorGoingUp(){ // starts at the top and goes down
@@ -213,8 +225,8 @@
 
 
             // DOWN functions
-            function getLowestFloorToVisit(buttonsPressed) {
-                return min(lowestGoingUp();, lowestGoingDown();, minInArray(buttonsPressed));
+            function getLowestFloorToVisit(pressedFloors) {
+                return min(lowestGoingUp();, lowestGoingDown();, minInArray(pressedFloors));
             };
 
             function lowestGoingUp(){
@@ -230,7 +242,6 @@
                 }
                 return floors.length-1; // if none, returns top floor
             }
-
 
             function maxInArray(array){
                 return Math.max.apply(Math, array);
